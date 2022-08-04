@@ -116,10 +116,7 @@ abstract class CLIContainer extends PSR3CLI
     {
         $_cmdOptConfig = $cmdOptConfig = isset($_ENV['CMD_OPT_FILE']) ? realpath($_ENV['CMD_OPT_FILE']) : false;
         if (is_string($cmdOptConfig)) {
-            $cmdOptConfig = file_get_contents($cmdOptConfig);
-            if (is_string($cmdOptConfig)) {
-                $cmdOptConfig = json_decode($cmdOptConfig, true);
-            }
+            $cmdOptConfig = include $_ENV['CMD_OPT_FILE'];
             if (!is_array($cmdOptConfig)) {
                 throw new Exception("Invalid CMD_OPT_FILE: {$_cmdOptConfig}");
             }
