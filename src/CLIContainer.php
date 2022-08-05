@@ -7,7 +7,6 @@ namespace GAState\Tools\CLI;
 use Auryn\Injector;
 use Dotenv\Dotenv;
 use Exception;
-use Psr\Log\LoggerInterface;
 use splitbrain\phpcli\PSR3CLI;
 use splitbrain\phpcli\Options;
 
@@ -23,12 +22,6 @@ abstract class CLIContainer extends PSR3CLI
      * @var Injector $injector
      */
     protected Injector $injector;
-
-
-    /**
-     * @var LoggerInterface
-     */
-    protected LoggerInterface $logger;
 
 
     /**
@@ -58,7 +51,6 @@ abstract class CLIContainer extends PSR3CLI
         }
 
         $this->injector = new Injector();
-        $this->logger = $this;
 
         $val = isset($_ENV['AUTOCATCH']) ? strtolower(strval($_ENV['AUTOCATCH'])) : '';
         $validVals = ['true', 'On', 'Yes', '1'];
