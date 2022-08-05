@@ -75,8 +75,6 @@ abstract class CLIContainer extends PSR3CLI
     {
         $this->checkEnv($options);
 
-        $this->boot($options);
-
         $this->cmdOptsConfig = $this->getCmdOpts($options);
         $this->loadCmdOpts($options);
     }
@@ -97,14 +95,6 @@ abstract class CLIContainer extends PSR3CLI
             }
         }
     }
-
-
-    /**
-     * @param Options $options
-     * 
-     * @return void
-     */
-    protected abstract function boot(Options $options): void;
 
 
     /**
@@ -186,15 +176,25 @@ abstract class CLIContainer extends PSR3CLI
             return;
         }
 
+        $this->boot($options);
+
         $cmdClass = $this->cmdOptsConfig[$cmdName]['class'] ?? '';
         if (!is_string($cmdClass) || !class_exists($cmdClass)) {
-            throw new Exception();
+            throw new Exception(); // TODO:: add error message
         }
         $cmd = $this->injector->make($cmdClass);
         if (!$cmd instanceof CLICommand) {
-            throw new Exception();
+            throw new Exception(); // TODO: add error message
         }
 
         $cmd->run(args: $args);
     }
+
+
+    /**
+     * @param Options $options
+     * 
+     * @return void
+     */
+    protected abstract function boot(Options $options): void;
 }
