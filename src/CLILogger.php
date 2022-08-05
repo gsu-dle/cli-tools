@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace GAState\App\BannerImport;
+namespace GAState\Tools\CLI;
 
 use DateTimeZone;
 use Monolog\Logger;
