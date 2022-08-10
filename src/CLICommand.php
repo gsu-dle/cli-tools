@@ -6,11 +6,6 @@ namespace GAState\Tools\CLI;
 
 abstract class CLICommand
 {
-    public function __construct()
-    {
-        
-    }
-
     /**
      * @param array<string> $args
      * 
