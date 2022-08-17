@@ -51,6 +51,7 @@ abstract class CLIContainer extends PSR3CLI
         }
 
         $this->injector = new Injector();
+        $this->injector->share($this->injector);
 
         $val = isset($_ENV['AUTOCATCH']) ? strtolower(strval($_ENV['AUTOCATCH'])) : '';
         $validVals = ['true', 'On', 'Yes', '1'];
