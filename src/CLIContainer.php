@@ -180,7 +180,15 @@ abstract class CLIContainer extends PSR3CLI
             throw new Exception(); // TODO: add error message
         }
 
-        $cmd->run(args: $args);
+        $opts = [];
+        $_opts = $options->getOpt();
+        if (is_array($_opts)) {
+            foreach($_opts as $name => $value) {
+                $opts[strval($name)] = strval($value);
+            }
+        }
+
+        $cmd->run(args: $args, opts: $opts);
     }
 
 

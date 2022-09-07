@@ -8,8 +8,9 @@ abstract class CLICommand
 {
     /**
      * @param array<string> $args
+     * @param array<string> $opts
      * 
      * @return void
      */
-    public abstract function run(array $args = []): void;
+    public abstract function run(array $args = [], array $opts = []): void;
 }
