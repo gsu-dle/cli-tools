@@ -26,28 +26,19 @@ abstract class CLIContainer extends PSR3CLI
 
     /**
      * @param string|false $envConfigPath
-     * @param string|null $envConfigName
      */
-    public final function __construct(
-        string|false $envConfigPath = __DIR__ . '/../',
-        string|null $envConfigName = null
-    ) {
+    public final function __construct(string|false $envConfigPath = false) {
         if ($envConfigPath !== false) {
-            $_envConfigPath = $envConfigPath;
-            $envConfigPath = explode(';', $envConfigPath);
-            foreach ($envConfigPath as $idx => $path) {
-                $path = realpath($path);
-                if ($path === false) {
-                    unset($envConfigPath[$idx]);
-                }
+            $_envConfigPath = realpath($envConfigPath);
+            if ($_envConfigPath === false) {
+                throw new Exception("Invalid env config directory: {$envConfigPath}");
             }
-            if (count($envConfigPath) < 1) {
-                throw new Exception("Invalid env config directory: {$_envConfigPath}");
+            $envConfigPath = $_envConfigPath;
+
+            if (!isset($_ENV['BASE_DIR'])) {
+                $_ENV['BASE_DIR'] = $envConfigPath;
             }
-            if (is_string($envConfigName)) {
-                $envConfigName = explode(';', $envConfigName);
-            }
-            Dotenv::createImmutable($envConfigPath, $envConfigName)->load();
+            Dotenv::createImmutable($envConfigPath)->load();
         }
 
         $this->injector = new Injector();
