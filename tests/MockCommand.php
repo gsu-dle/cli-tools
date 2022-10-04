@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
-namespace GAState\Tools\CLI;
+namespace GAState\Tools\CLI\Tests;
 
-interface CLICommand
+use GAState\Tools\CLI\CLICommand;
+
+class MockCommand implements CLICommand
 {
     /**
      * @param array<int, string> $args
@@ -17,5 +19,11 @@ interface CLICommand
         array $args = [],
         array $opts = [],
         array $env = []
-    ): void;
+    ): void {
+        echo json_encode([
+            'args' => $args, 
+            'opts' => $opts, 
+            'env' => $env
+        ], JSON_PRETTY_PRINT) . "\n";
+    }
 }

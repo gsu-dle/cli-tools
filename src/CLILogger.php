@@ -10,6 +10,10 @@ use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\HandlerInterface;
 use Monolog\Handler\StreamHandler;
 
+/**
+ * @codeCoverageIgnore Not considered for code coverage since this is just a facade for the Logger class from 
+ * Monolog\Logger
+ */
 class CLILogger extends Logger
 {
     /**

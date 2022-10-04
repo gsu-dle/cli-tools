@@ -7,13 +7,37 @@ namespace GAState\Tools\CLI;
 use Auryn\Injector;
 use Dotenv\Dotenv;
 use Exception;
-use splitbrain\phpcli\PSR3CLI;
 use splitbrain\phpcli\Options;
 
-abstract class CLIContainer extends PSR3CLI
+class CLIContainer extends CLIBaseContainer
 {
+    public const ENV_BASE_DIR = 'BASE_DIR';
+    public const ENV_REQUIRED_ENVS = 'REQUIRED_ENVS';
+    public const ENV_CMD_OPTS_FILE = 'CMD_OPTS_FILE';
+    public const OPT_GLOBAL_CMD = '__global__';
+    public const OPT_LOG_LEVEL = 'logLevel';
+
+
     /**
-     * @var array<string, array<string, string|array<array<string,string>>>> $cmdOptsConfig
+     * @var string|false $envConfigPath
+     */
+    protected string|false $envConfigPath = false;
+
+
+    /**
+     * @var array<string, string|null> $env
+     */
+    protected array $env = [];
+
+
+    /**
+     * @var string $cmdOptsConfigFile
+     */
+    protected string|false $cmdOptsConfigFile = false;
+
+
+    /**
+     * @var array<string, CLICommandConfig> $cmdOptsConfig
      */
     protected array $cmdOptsConfig = [];
 
@@ -26,27 +50,18 @@ abstract class CLIContainer extends PSR3CLI
 
     /**
      * @param string|false $envConfigPath
+     * @param bool $autocatch
      */
-    public final function __construct(string|false $envConfigPath = false) {
-        if ($envConfigPath !== false) {
-            $_envConfigPath = realpath($envConfigPath);
-            if ($_envConfigPath === false) {
-                throw new Exception("Invalid env config directory: {$envConfigPath}");
-            }
-            $envConfigPath = $_envConfigPath;
-
-            if (!isset($_ENV['BASE_DIR'])) {
-                $_ENV['BASE_DIR'] = $envConfigPath;
-            }
-            Dotenv::createImmutable($envConfigPath)->load();
-        }
-
+    public final function __construct(
+        string|false $envConfigPath = false,
+        string|false $cmdOptsConfigFile = false,
+        bool $autocatch = false
+    ) {
+        $this->envConfigPath = $envConfigPath;
+        $this->cmdOptsConfigFile = $cmdOptsConfigFile;
         $this->injector = new Injector();
-        $this->injector->share($this->injector);
 
-        $val = isset($_ENV['AUTOCATCH']) ? strtolower(strval($_ENV['AUTOCATCH'])) : '';
-        $validVals = ['true', 'On', 'Yes', '1'];
-        parent::__construct(autocatch: in_array($val, $validVals, true));
+        parent::__construct(autocatch: $autocatch);
     }
 
 
@@ -57,91 +72,11 @@ abstract class CLIContainer extends PSR3CLI
      */
     protected final function setup(Options $options): void
     {
+        $this->env = $this->getEnvVars($options);
         $this->checkEnv($options);
 
         $this->cmdOptsConfig = $this->getCmdOpts($options);
         $this->loadCmdOpts($options);
-    }
-
-
-    /**
-     * @param Options $options
-     * 
-     * @return void
-     */
-    protected function checkEnv(Options $options): void
-    {
-        $requiredEnvs = explode(',', isset($_ENV['REQUIRED_ENVS']) ? strtolower(strval($_ENV['REQUIRED_ENVS'])) : '');
-        foreach ($requiredEnvs as $env) {
-            $env = strtoupper(trim($env));
-            if (!isset($_ENV[$env])) {
-                throw new Exception("Missing required env var: {$env}");
-            }
-        }
-    }
-
-
-    /**
-     * @param Options $options
-     * 
-     * @return array<string, array<string, string|array<array<string,string>>>>
-     */
-    protected function getCmdOpts(Options $options): array
-    {
-        $_cmdOptConfig = $cmdOptConfig = isset($_ENV['CMD_OPT_FILE']) ? realpath($_ENV['CMD_OPT_FILE']) : false;
-        if (is_string($cmdOptConfig)) {
-            $cmdOptConfig = include $_ENV['CMD_OPT_FILE'];
-            if (!is_array($cmdOptConfig)) {
-                throw new Exception("Invalid CMD_OPT_FILE: {$_cmdOptConfig}");
-            }
-        } else {
-            $cmdOptConfig = [];
-        }
-
-        return $cmdOptConfig;
-    }
-
-
-    /**
-     * @param Options $options
-     * 
-     * @return void
-     */
-    protected function loadCmdOpts(Options $options): void
-    {
-        foreach ($this->cmdOptsConfig  as $commandName => $command) {
-            if ($commandName === '__global__') {
-                $commandName = '';
-            } else {
-                $options->registerCommand(
-                    command: $commandName,
-                    help: is_string($command['description']) ? $command['description'] : ''
-                );
-
-                if (is_array($command['arguments'])) {
-                    foreach ($command['arguments'] as $argument) {
-                        $options->registerArgument(
-                            arg: $argument['name'],
-                            help: $argument['description'],
-                            required: ($argument['required'] ?? 'true') === 'true',
-                            command: $commandName
-                        );
-                    }
-                }
-            }
-
-            if (is_array($command['options'])) {
-                foreach ($command['options'] as $option) {
-                    $options->registerOption(
-                        long: $option['name'],
-                        help: $option['description'],
-                        short: $option['shortName'] ?? null,
-                        needsarg: ($option['required'] ?? 'true') === 'true',
-                        command: $commandName
-                    );
-                }
-            }
-        }
     }
 
 
@@ -152,34 +87,70 @@ abstract class CLIContainer extends PSR3CLI
      */
     protected final function main(Options $options): void
     {
-        $cmdName = $options->getCmd();
-        $args = $options->getArgs();
-
-        if ($cmdName === '') {
+        if ($options->getOpt('help', false) === true) {
             echo $options->help();
             return;
         }
 
-        $this->boot($options);
-
-        $cmdClass = $this->cmdOptsConfig[$cmdName]['class'] ?? '';
-        if (!is_string($cmdClass) || !class_exists($cmdClass)) {
-            throw new Exception(); // TODO:: add error message
+        $cmdName = $this->getCmdName($options);
+        if ($cmdName === '') {
+            throw new Exception('Invalid command name');
         }
+
+        $cmdClass = $this->getCmdClass($cmdName, $options);
+        if (!is_string($cmdClass) || !class_exists($cmdClass)) {
+            throw new Exception('Invalid command class name');
+        }
+
+        $args = $this->getArgs($cmdName, $options);
+        $opts = $this->getOpts($cmdName, $options);
+
+        $this->boot($cmdName, $args, $opts, $options);
+
         $cmd = $this->injector->make($cmdClass);
         if (!$cmd instanceof CLICommand) {
-            throw new Exception(); // TODO: add error message
+            throw new Exception('Invalid command class type');
         }
 
-        $opts = [];
-        $_opts = $options->getOpt();
-        if (is_array($_opts)) {
-            foreach($_opts as $name => $value) {
-                $opts[strval($name)] = strval($value);
+        $cmd->run($args, $opts, $this->env);
+    }
+
+
+    /**
+     * @param Options $options
+     * 
+     * @return array<string, string|null>
+     */
+    protected function getEnvVars(Options $options): array
+    {
+        $env = [];
+
+        if ($this->envConfigPath !== false) {
+            $_envConfigPath = realpath($this->envConfigPath);
+            if ($_envConfigPath === false) {
+                throw new Exception("Invalid environment config directory");
+            }
+            $envConfigPath = $_envConfigPath;
+
+            $envConfigFile = realpath($envConfigPath . '/.env');
+            if ($envConfigFile === false) {
+                throw new Exception("Missing environment config file");
+            }
+
+            Dotenv::createImmutable($envConfigPath)->load();
+            $env = $_ENV;
+
+            if (!isset($env[static::ENV_BASE_DIR])) {
+                $env[static::ENV_BASE_DIR] = $envConfigPath;
+            }
+        } else {
+            foreach ($_ENV as $name => $value) {
+                $env[strval($name)] = strval($value);
             }
         }
 
-        $cmd->run(args: $args, opts: $opts);
+        /** @var array<string, string|null> */
+        return $env;
     }
 
 
@@ -188,5 +159,194 @@ abstract class CLIContainer extends PSR3CLI
      * 
      * @return void
      */
-    protected abstract function boot(Options $options): void;
+    protected function checkEnv(Options $options): void
+    {
+        $requiredEnv = $this->getRequiredEnvVars($options);
+        foreach ($requiredEnv as $env) {
+            if (!isset($this->env[$env])) {
+                throw new Exception("Missing required environment variable: '{$env}'");
+            }
+        }
+    }
+
+
+    /**
+     * @param Options $options
+     * 
+     * @return array<string>
+     */
+    protected function getRequiredEnvVars(Options $options): array
+    {
+        return isset($this->env[static::ENV_REQUIRED_ENVS]) ? explode(',', strval($this->env[static::ENV_REQUIRED_ENVS])) : [];
+    }
+
+
+    /**
+     * @param Options $options
+     * 
+     * @return array<string, CLICommandConfig>
+     */
+    protected function getCmdOpts(Options $options): array
+    {
+        $cmdOptConfigFile = $this->getCmdOptsConfigFile($options);
+
+        if (!is_string($cmdOptConfigFile) || !file_exists($cmdOptConfigFile)) {
+            throw new Exception("Missing command options config file");
+        }
+
+        $cmdOptConfig = require $cmdOptConfigFile;
+        if (!is_array($cmdOptConfig)) {
+            throw new Exception("Invalid command options config file");
+        }
+
+        foreach ($cmdOptConfig as $cmdName => $cmd) {
+            if (!is_string($cmdName) || !$cmd instanceof CLICommandConfig) {
+                throw new Exception("Invalid command options config file");
+            }
+        }
+
+        /** @var array<string, CLICommandConfig> */
+        return $cmdOptConfig;
+    }
+
+
+    /**
+     * @param Options $options
+     * 
+     * @return string|false
+     */
+    protected function getCmdOptsConfigFile(Options $options): string|false
+    {
+        return $this->env[static::ENV_CMD_OPTS_FILE] ?? $this->cmdOptsConfigFile;
+    }
+
+
+    /**
+     * @param Options $options
+     * 
+     * @return void
+     */
+    protected function loadCmdOpts(Options $options): void
+    {
+        foreach ($this->cmdOptsConfig as $commandName => $command) {
+            if ($commandName === static::OPT_GLOBAL_CMD) {
+                $commandName = '';
+            } else {
+                $options->registerCommand(
+                    $command->Name,
+                    $command->Description
+                );
+
+                foreach ($command->Arguments as $cmdArgument) {
+                    $options->registerArgument(
+                        $cmdArgument->Name,
+                        $cmdArgument->Description,
+                        $cmdArgument->Required,
+                        $commandName
+                    );
+                }
+            }
+
+            foreach ($command->Options as $cmdOption) {
+                $options->registerOption(
+                    $cmdOption->Name,
+                    $cmdOption->Description,
+                    $cmdOption->ShortName,
+                    $cmdOption->ArgRequired,
+                    $commandName
+                );
+            }
+        }
+    }
+
+
+    /**
+     * @param Options $options
+     * 
+     * @return string
+     */
+    protected function getCmdName(Options $options): string
+    {
+        return $options->getCmd();
+    }
+
+
+    /**
+     * @param string $cmdName
+     * @param Options $options
+     * 
+     * @return string|false
+     */
+    protected function getCmdClass(
+        string $cmdName,
+        Options $options
+    ): string|false {
+        $cmdClass = ($this->cmdOptsConfig[$cmdName] ?? null)?->ClassName ?? false;
+        return is_string($cmdClass) && class_exists($cmdClass) ? $cmdClass : false;
+    }
+
+
+    /**
+     * @param string $cmdName
+     * @param Options $options
+     * 
+     * @return array<int,string>
+     */
+    protected function getArgs(
+        string $cmdName,
+        Options $options
+    ): array {
+        /** @var array<int,string> */
+        return $options->getArgs();
+    }
+
+
+    /**
+     * @param string $cmdName
+     * @param Options $options
+     * 
+     * @return array<string,string>
+     */
+    protected function getOpts(
+        string $cmdName,
+        Options $options
+    ): array {
+        /** @var array<string,string> $opts */
+        $opts = [];
+
+        $_opts = $options->getOpt();
+        if (is_array($_opts)) {
+            foreach ($_opts as $name => $value) {
+                $opts[strval($name)] = $value;
+            }
+        }
+
+        return $opts;
+    }
+
+
+    /**
+     * @param string $cmdName
+     * @param array<int,string> $args
+     * @param array<string,string> $opts
+     * @param Options $options
+     * 
+     * @return void
+     */
+    protected function boot(
+        string $cmdName,
+        array $args,
+        array $opts,
+        Options $options
+    ): void {
+        // App logger
+        $this->injector
+            ->define("GAState\Tools\CLI\CLILogger", [
+                ':name' => $options->getBin(),
+                ':cmd' => $cmdName,
+                ':logLevel' => $opts[static::OPT_LOG_LEVEL] ?? 'info',
+                ':timezone' => null
+            ])
+            ->alias('Psr\Log\LoggerInterface', 'GAState\Tools\CLI\CLILogger');
+    }
 }

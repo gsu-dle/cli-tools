@@ -13,9 +13,7 @@ class StringUtils
      */
     public static function getElapsedTime(int|float $startTime): string
     {
-        return static::formatElapsedTime(
-            elapsedTime: round(microtime(true) - $startTime, 3)
-        );
+        return static::formatElapsedTime(round(microtime(true) - $startTime, 3));
     }
 
 
